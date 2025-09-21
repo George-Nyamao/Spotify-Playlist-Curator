@@ -518,7 +518,7 @@ def dedupe_by_name_artist(tracks):
         else:
             seen[key] = t
             ordered.append(t)
-    return ordered
+    return list(seen.values())
 
 # ===================== YOUTUBE MUSIC MAPPING =====================
 def looks_explicit_yt(item):

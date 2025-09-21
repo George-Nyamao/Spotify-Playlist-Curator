@@ -1,5 +1,11 @@
+# Python
+__pycache__/
+*.pyc
+
+# Environment
 .env
 oauth.json
 .cache-spotify
 rapid_cache.json
+.cache
 spot_env/

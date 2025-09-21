@@ -1,0 +1,5 @@
+.env
+oauth.json
+.cache-spotify
+rapid_cache.json
+spot_env/

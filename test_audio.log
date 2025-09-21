@@ -1,0 +1,13 @@
+Traceback (most recent call last):
+  File "C:\Users\gmnya\Documents\Projects\Spotify-Playlist-Curator\test_audio.py", line 7, in <module>
+    sp = Spotify(auth_manager=SpotifyOAuth())
+                              ^^^^^^^^^^^^^^
+  File "C:\Users\gmnya\Documents\Projects\Spotify-Playlist-Curator\spot_env\Lib\site-packages\spotipy\oauth2.py", line 332, in __init__
+    self.client_id = client_id
+    ^^^^^^^^^^^^^^
+  File "C:\Users\gmnya\Documents\Projects\Spotify-Playlist-Curator\spot_env\Lib\site-packages\spotipy\oauth2.py", line 94, in client_id
+    self._client_id = _ensure_value(val, "client_id")
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\gmnya\Documents\Projects\Spotify-Playlist-Curator\spot_env\Lib\site-packages\spotipy\oauth2.py", line 70, in _ensure_value
+    raise SpotifyOauthError(msg)
+spotipy.oauth2.SpotifyOauthError: No client_id. Pass it or set a SPOTIPY_CLIENT_ID environment variable.

@@ -1,4 +1,3 @@
-# curator.py
 import os, json, time, requests, threading
 from pathlib import Path
 from collections import defaultdict, Counter
@@ -9,7 +8,6 @@ from dotenv import load_dotenv
 
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
-from ytmusicapi import YTMusic
 
 # ===================== CONFIG =====================
 load_dotenv()
@@ -82,16 +80,13 @@ def rapidapi_acquire():
         _rb_tokens = max(0.0, (_rb_tokens or 0.0) - 1.0)
         return
 
-# YouTube Music auth file (created by ytmusicapi oauth)
-YTMUSIC_OAUTH_JSON = os.getenv("YTMUSIC_OAUTH_JSON", "oauth.json")
-
 # Markets / playlist source
 MARKET = os.getenv("MARKET", "US")
 SOURCE_PLAYLIST_ID = os.getenv("SOURCE_PLAYLIST_ID", "0nqnvBL1fG8EKOXqv1FCIf")  # your 2000–2019 Spotify playlist
 
-# Target playlist (YT Music)
-TARGET_PLAYLIST_NAME = os.getenv("TARGET_PLAYLIST_NAME", "R&B + Hip Hop: Clean 2020s (Hybrid Auto-Curated)")
-TARGET_DESC = os.getenv("TARGET_DESC", "Auto-curated from my 2000–2019 vibe — clean-first, remix-aware; Spotify→YT Music hybrid.")
+# Target playlist (Spotify)
+TARGET_PLAYLIST_NAME = os.getenv("TARGET_PLAYLIST_NAME", "R&B 2020s")
+TARGET_DESC = os.getenv("TARGET_DESC", "Auto-curated R&B from 2020+ based on my 2000-2019 taste — clean-first, remix-aware")
 
 # Year / size / caps
 YEAR_MIN = int(os.getenv("YEAR_MIN", "2020"))
@@ -107,26 +102,57 @@ MAX_RAPID_CANDIDATE_CALLS = int(os.getenv("MAX_RAPID_CANDIDATE_CALLS", "250"))
 REMIX_TERMS = ["remix","radio edit","edit","mix","rework","version","club mix","extended"]
 CLEAN_TERMS = ["clean","radio edit","clean edit","clean version"]
 
-# Feature order we’ll produce from RapidAPI
+# Feature order we'll produce from RapidAPI
 AUDIO_KEYS = ["danceability","energy","loudness","speechiness","acousticness",
               "instrumentalness","liveness","valence","tempo"]
 
 # Cache file for RapidAPI payloads
 CACHE_PATH = Path(os.getenv("RAPID_CACHE_PATH", "rapid_cache.json"))
 
+# DRY_RUN safety: default true (do not create playlists unless explicitly disabled)
+DRY_RUN = os.getenv("DRY_RUN", "1") == "1"
+
 # ===================== AUTH =====================
-sp = spotipy.Spotify(auth_manager=SpotifyOAuth(
-    client_id=SPOTIPY_CLIENT_ID,
-    client_secret=SPOTIPY_CLIENT_SECRET,
-    redirect_uri=SPOTIPY_REDIRECT_URI,
-    scope="playlist-read-private playlist-modify-private user-library-read",
-    cache_path=".cache-spotify",
-))
-yt = YTMusic(YTMUSIC_OAUTH_JSON)
+def check_spotify_credentials():
+    """Validate Spotify credentials are configured"""
+    missing = []
+    if not SPOTIPY_CLIENT_ID:
+        missing.append("SPOTIPY_CLIENT_ID")
+    if not SPOTIPY_CLIENT_SECRET:
+        missing.append("SPOTIPY_CLIENT_SECRET")
+    
+    if missing:
+        print("❌ Missing Spotify credentials in .env file:")
+        for cred in missing:
+            print(f"   - {cred}")
+        print("\n📋 Setup Instructions:")
+        print("1. Go to https://developer.spotify.com/dashboard")
+        print("2. Create a new app or use existing")
+        print("3. Add redirect URI in app settings: http://127.0.0.1:8888/callback")
+        print("4. Copy Client ID and Client Secret to your .env file")
+        return False
+    return True
+
+# Initialize Spotify client
+sp = None
+if check_spotify_credentials():
+    try:
+        sp = spotipy.Spotify(auth_manager=SpotifyOAuth(
+            client_id=SPOTIPY_CLIENT_ID,
+            client_secret=SPOTIPY_CLIENT_SECRET,
+            redirect_uri=SPOTIPY_REDIRECT_URI,
+            scope="playlist-read-private playlist-modify-private playlist-modify-public user-library-read",
+            cache_path=".cache-spotify",
+            show_dialog=True  # Always show login dialog for clarity
+        ))
+    except Exception as e:
+        print(f"❌ Spotify authentication failed: {e}")
+        print("Check your credentials and redirect URI configuration.")
+        sp = None
 
 # Shared HTTP session
 http = requests.Session()
-http.headers.update({"Accept": "application/json", "User-Agent": "hybrid-curator/2.0"})
+http.headers.update({"Accept": "application/json", "User-Agent": "rb-curator/1.0"})
 
 # ===================== UTILS =====================
 def batched(lst, n):
@@ -166,6 +192,7 @@ def remix_bonus(name: str) -> float:
 def spotify_me():
     me = sp.current_user()
     print("Spotify user:", me["id"])
+    return me
 
 # ===================== CACHE =====================
 def load_cache() -> dict:
@@ -197,9 +224,6 @@ def get_playlist_tracks(pid):
 # ===================== RAPIDAPI ANALYSIS =====================
 rapid_calls_made_source = 0
 rapid_calls_made_candidates = 0
-
-# DRY_RUN safety: default true (do not create playlists unless explicitly disabled)
-DRY_RUN = os.getenv("DRY_RUN", "1") == "1"
 
 def feature_row_from_rapid(payload):
     """
@@ -520,44 +544,36 @@ def dedupe_by_name_artist(tracks):
             ordered.append(t)
     return list(seen.values())
 
-# ===================== YOUTUBE MUSIC MAPPING =====================
-def looks_explicit_yt(item):
-    badges = item.get("badges") or []
-    return any("Explicit" in b for b in badges)
-
-def yt_search_best(artist, title, prefer_clean=True):
-    q = f"{artist} {title}"
-    try:
-        results = yt.search(q, filter="songs", limit=14)
-    except Exception as e:
-        print("yt.search error:", e)
-        return None
-    if not results:
-        return None
-
-    def rank(it):
-        name = (it.get("title") or "").lower()
-        pen_exp = 1 if looks_explicit_yt(it) else 0
-        bonus_clean = 2 if (("radio edit" in name) or ("clean" in name)) else 0
-        sim = 1 - (abs(len(title) - len(name)) / max(len(title), 1))
-        return (bonus_clean + sim) - 1.5 * pen_exp
-
-    results.sort(key=rank, reverse=True)
-    if prefer_clean:
-        for r in results:
-            if not looks_explicit_yt(r):
-                return r
-    return results[0]
-
-def create_yt_playlist_and_fill(title, description, video_ids):
-    pid = yt.create_playlist(title, description, privacy_status="PRIVATE")
-    for chunk in batched(video_ids, 100):
-        yt.add_playlist_items(pid, chunk)
-    return pid
+# ===================== SPOTIFY PLAYLIST CREATION =====================
+def create_spotify_playlist_and_fill(user_id, title, description, track_uris):
+    """
+    Create a new Spotify playlist and add tracks to it.
+    """
+    # Create the playlist
+    playlist = sp.user_playlist_create(
+        user=user_id,
+        name=title,
+        public=False,  # private playlist
+        description=description
+    )
+    playlist_id = playlist["id"]
+    print(f"Created Spotify playlist: {title} (ID: {playlist_id})")
+    
+    # Add tracks in batches of 100 (Spotify's limit)
+    for chunk in batched(track_uris, 100):
+        sp.playlist_add_items(playlist_id, chunk)
+    
+    return playlist_id
 
 # ===================== MAIN =====================
 def main():
-    spotify_me()
+    # Check if Spotify client is initialized
+    if sp is None:
+        print("❌ Cannot proceed without Spotify authentication")
+        return
+        
+    user = spotify_me()
+    user_id = user["id"]
 
     rapid_cache = load_cache()
     # restore counters from cache meta if present
@@ -567,6 +583,7 @@ def main():
     rapid_calls_made_candidates = int(meta.get("rapid_calls_made_candidates", rapid_calls_made_candidates))
 
     print(f"Loaded RapidAPI cache with {len(rapid_cache)} entries.")
+    print(f"RapidAPI calls made - Source: {rapid_calls_made_source}, Candidates: {rapid_calls_made_candidates}")
 
     # 1) SOURCE PLAYLIST & TASTE
     print("Loading source playlist…")
@@ -603,10 +620,14 @@ def main():
         print("No clean candidates found; stopping.")
         return
 
+    print(f"Found {len(clean)} clean candidate tracks")
+
     # 4) FEATURES FOR CANDIDATES (RapidAPI only)
     print("Fetching candidate features via RapidAPI (cached, budgeted)…")
     scored = []
-    for t in clean:
+    for i, t in enumerate(clean):
+        if i % 20 == 0:
+            print(f"  Processing candidate {i+1}/{len(clean)}")
         tid = t["id"]
         payload = analyze_track_via_rapidapi(tid, cache=rapid_cache, is_candidate=True)
         feat_row = feature_row_from_rapid(payload)
@@ -626,34 +647,40 @@ def main():
         if len(out) >= TARGET_SIZE:
             break
 
-    print(f"Selected {len(out)} Spotify tracks → matching on YT Music…")
-
-    # 6) MAP TO YT MUSIC
-    yt_video_ids, seen_vids = [], set()
-    for t in out:
+    print(f"Selected {len(out)} tracks for final playlist")
+    
+    # Print top 10 tracks for preview
+    print("\nTop 10 tracks:")
+    for i, t in enumerate(out[:10]):
         artist = t["artists"][0]["name"]
         title = t["name"]
-        best = yt_search_best(artist, title, prefer_clean=True)
-        if not best:
-            best = yt_search_best(artist, f"{title} radio edit", True) or yt_search_best(artist, f"{title} clean", True)
-        if best:
-            vid = best.get("videoId")
-            if vid and vid not in seen_vids:
-                seen_vids.add(vid)
-                yt_video_ids.append(vid)
+        year = year_of(t)
+        print(f"  {i+1:2d}. {artist} - {title} ({year})")
 
-    if not yt_video_ids:
-        print("No YT Music matches found; stopping.")
+    if not out:
+        print("No tracks selected; stopping.")
         return
 
-    # 7) CREATE YT MUSIC PLAYLIST (respect DRY_RUN)
+    # 6) CREATE SPOTIFY PLAYLIST (respect DRY_RUN)
+    track_uris = [f"spotify:track:{t['id']}" for t in out]
+    
     if DRY_RUN:
-        print("[DRY RUN] Would create YT Music playlist:", TARGET_PLAYLIST_NAME)
-        print("[DRY RUN] Would add", len(yt_video_ids), "tracks. First few videoIds:", yt_video_ids[:8])
+        print(f"\n[DRY RUN] Would create Spotify playlist: {TARGET_PLAYLIST_NAME}")
+        print(f"[DRY RUN] Would add {len(track_uris)} tracks")
+        print(f"[DRY RUN] Set DRY_RUN=0 in your .env file to actually create the playlist")
         return
 
-    pid = create_yt_playlist_and_fill(TARGET_PLAYLIST_NAME, TARGET_DESC, yt_video_ids)
-    print(f"YT Music playlist created: {pid} with {len(yt_video_ids)} tracks")
+    playlist_id = create_spotify_playlist_and_fill(
+        user_id=user_id,
+        title=TARGET_PLAYLIST_NAME,
+        description=TARGET_DESC,
+        track_uris=track_uris
+    )
+    
+    print(f"\n✅ Created Spotify playlist '{TARGET_PLAYLIST_NAME}' with {len(track_uris)} tracks!")
+    print(f"Playlist ID: {playlist_id}")
+    print(f"View at: https://open.spotify.com/playlist/{playlist_id}")
 
 if __name__ == "__main__":
     main()
+    

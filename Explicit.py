@@ -1,4 +1,5 @@
 import os
+import sys
 import spotipy
 from spotipy.oauth2 import SpotifyClientCredentials
 from dotenv import load_dotenv
@@ -19,69 +20,67 @@ if not SPOTIPY_CLIENT_ID or not SPOTIPY_CLIENT_SECRET:
 auth_manager = SpotifyClientCredentials(client_id=SPOTIPY_CLIENT_ID, client_secret=SPOTIPY_CLIENT_SECRET)
 sp = spotipy.Spotify(auth_manager=auth_manager, requests_timeout=30)
 
-def get_song_versions(song_title):
+def get_song_details(title, artist):
     """
-    Searches for a song on Spotify and returns its explicit and non-explicit versions.
+    Searches for a song on Spotify using title and artist and returns its details.
     """
-    results = sp.search(q=song_title, type='track', limit=50)
+    query = f"track:{title} artist:{artist}"
+    results = sp.search(q=query, type='track', limit=1)
     tracks = results['tracks']['items']
 
-    versions = []
-    seen_tracks = set()
+    if not tracks:
+        return {'Genre': 'N/A', 'Explicit': 'N/A', 'Track ID': 'N/A'}
 
-    for track in tracks:
-        # Normalize title and artists to avoid duplicates with minor variations
-        normalized_title = track['name'].lower()
-        artist_names = sorted([artist['name'].lower() for artist in track['artists']])
+    track = tracks[0]
 
-        # Create a unique key for the track based on title, artists, and explicit status
-        track_key = (normalized_title, tuple(artist_names), track['explicit'])
+    # Get genre from the artist
+    artist_id = track['artists'][0]['id']
+    artist_info = sp.artist(artist_id)
+    genres = artist_info.get('genres', ['N/A'])
 
-        if track_key not in seen_tracks:
-            # Get genre from the first artist
-            artist_id = track['artists'][0]['id']
-            artist_info = sp.artist(artist_id)
-            genres = artist_info.get('genres', ['N/A'])
-
-            versions.append({
-                'Title': track['name'],
-                'Artist(s)': ", ".join([artist['name'] for artist in track['artists']]),
-                'Genre': ", ".join(genres) if genres else 'N/A',
-                'Explicit': track['explicit'],
-                'Track ID': track['id']
-            })
-            seen_tracks.add(track_key)
-
-    return versions
+    return {
+        'Genre': ", ".join(genres) if genres else 'N/A',
+        'Explicit': track['explicit'],
+        'Track ID': track['id']
+    }
 
 def main():
     """
     Main function to run the script.
     """
-    song_list = ["bad guy", "Blinding Lights", "Dance Monkey"]  # Example song list
-    all_songs_data = []
+    if len(sys.argv) < 2:
+        print("Usage: python Explicit.py <input_csv_file>")
+        sys.exit(1)
 
-    for song in song_list:
-        print(f"Searching for '{song}'...")
-        versions = get_song_versions(song)
-        if versions:
-            all_songs_data.extend(versions)
-        else:
-            print(f"Could not find any versions for '{song}'")
+    input_filename = sys.argv[1]
 
-    if not all_songs_data:
-        print("No song data found.")
-        return
+    try:
+        df = pd.read_csv(input_filename)
+    except FileNotFoundError:
+        print(f"Error: Input file '{input_filename}' not found.")
+        sys.exit(1)
 
-    # Create a DataFrame and save to CSV
-    df = pd.DataFrame(all_songs_data)
-    df.index = df.index + 1  # Start numbering from 1
-    df.index.name = "No."
-    df.to_csv("explicit_songs.csv")
+    song_details = []
+    for index, row in df.iterrows():
+        title = row['Title']
+        artist = row['Artist(s)']
+        print(f"Processing '{title}' by '{artist}'...")
+        details = get_song_details(title, artist)
+        song_details.append(details)
 
-    print("\nSuccessfully created 'explicit_songs.csv' with the following data:")
-    print(df)
+    details_df = pd.DataFrame(song_details)
 
+    # Combine original df with new details
+    result_df = pd.concat([df, details_df], axis=1)
+
+    # Generate output filename
+    base, ext = os.path.splitext(input_filename)
+    output_filename = f"{base}_test{ext}"
+
+    result_df.to_csv(output_filename, index=False)
+
+    print(f"\nSuccessfully created '{output_filename}'")
+    print(result_df)
 
 if __name__ == "__main__":
     main()

@@ -9,3 +9,6 @@ oauth.json
 rapid_cache.json
 .cache
 spot_env/
+
+# CSV
+*.csv

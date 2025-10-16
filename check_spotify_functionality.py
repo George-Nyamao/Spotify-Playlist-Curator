@@ -12,7 +12,7 @@ SPOTIPY_CLIENT_ID = os.getenv("SPOTIPY_CLIENT_ID")
 SPOTIPY_CLIENT_SECRET = os.getenv("SPOTIPY_CLIENT_SECRET")
 
 # A list of track IDs to test
-TEST_TRACK_IDS = ['6iEvECKDbtcbfbTLNoQGe1', '1G32fy7VMCDLl92iGXvBEm']
+TEST_TRACK_IDS = ['1mh9eHVRdNhzryG43PXdW1', '6o3F37m0ONESdUlRqctCfG', '3riRdhyMDfEQz5nKrxfbwv', '7qEVRQ63lrsY3TJHSpjRLw']
 
 auth_manager = SpotifyClientCredentials(
     client_id=SPOTIPY_CLIENT_ID,

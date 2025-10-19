@@ -9,6 +9,8 @@ load_dotenv()
 LASTFM_API_KEY = os.getenv("LASTFM_API_KEY")
 LASTFM_BASE_URL = "http://ws.audioscrobbler.com/2.0/"
 
+output_folder = "data"
+
 def get_genres_for_artist_track(artist_name, track_name):
     """Get genres for artist/track from Last.fm"""
     if not artist_name or not track_name or pd.isna(artist_name) or pd.isna(track_name):
@@ -126,7 +128,10 @@ def filter_csv_by_genres(input_csv, output_suffix='_curated'):
         output_csv = f"{input_csv}{output_suffix}.csv"
     
     # Save filtered results
-    filtered_df.to_csv(output_csv, index=False)
+    if not os.path.exists(output_folder):
+        os.makedirs(output_folder)
+    full_path = os.path.join(output_folder, output_csv)
+    filtered_df.to_csv(full_path, index=False)
     
     print(f"\nRESULTS:")
     print(f"Original tracks: {len(df)}")

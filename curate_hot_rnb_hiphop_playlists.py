@@ -6,7 +6,7 @@ import argparse
 from typing import List, Dict, Optional, Tuple
 
 import spotipy
-from spotipy.oauth2 import SpotifyOAuth # Changed from SpotifyClientCredentials
+from spotipy.oauth2 import SpotifyOAuth
 from dotenv import load_dotenv
 
 # Load dotenv
@@ -33,7 +33,7 @@ ADD_ITEMS_LIMIT = 100  # per request limit for adding items to playlists
 # The token will be cached in .spotify_token_cache
 sp = spotipy.Spotify(auth_manager=SpotifyOAuth(
     scope="playlist-modify-public playlist-modify-private",
-    redirect_uri="http://localhost:8080", # You can change this if needed, but it must be registered in your Spotify app
+    redirect_uri="http://127.0.0.1:8080", # Changed from localhost to explicit loopback address
     client_id=os.getenv("SPOTIPY_CLIENT_ID"),
     client_secret=os.getenv("SPOTIPY_CLIENT_SECRET"),
     cache_path=".spotify_token_cache" # Cache file for the user's token

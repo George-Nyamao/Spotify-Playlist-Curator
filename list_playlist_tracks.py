@@ -5,6 +5,9 @@ from dotenv import load_dotenv
 from spotipy.oauth2 import SpotifyClientCredentials
 from typing import List, Dict, Any, Optional
 
+PLAYLIST_ID = '3NwAKlyGXkYqjWouJFtJuN' # Example playlist ID
+OUTPUT_CSV = '2020s_RnB_Hip_Hop.csv'
+
 load_dotenv()
 
 def get_spotify_client() -> spotipy.Spotify:
@@ -111,7 +114,7 @@ def get_playlist_dataframe(sp: spotipy.Spotify, playlist_id: str) -> pd.DataFram
     # Create DataFrame
     return pd.DataFrame(table_data)
 
-def save_playlist_to_csv(df: pd.DataFrame, filename: str = 'my_playlist_table.csv') -> None:
+def save_playlist_to_csv(df: pd.DataFrame, filename: str = OUTPUT_CSV) -> None:
     """
     Save playlist DataFrame to CSV file.
     
@@ -127,7 +130,7 @@ def main():
         sp = get_spotify_client()
         
         # Your playlist ID
-        playlist_id = '0nqnvBL1fG8EKOXqv1FCIf'
+        playlist_id = PLAYLIST_ID
         
         # Get playlist data
         df_playlist = get_playlist_dataframe(sp, playlist_id)
@@ -141,7 +144,7 @@ def main():
         
         # Save to CSV
         save_playlist_to_csv(df_playlist)
-        print(f"Playlist data saved to 'my_playlist_table.csv'")
+        print(f"Playlist data saved to {OUTPUT_CSV}")
         
     except Exception as e:
         print(f"Error processing playlist: {e}")

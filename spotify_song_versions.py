@@ -92,6 +92,8 @@ print(f"Found {len(versions)} relevant versions of MUTT by Leon Thomas (sorted b
 print("=" * 80)
 
 for v in versions:
+    if v['popularity'] < 50:  # Filter out very low popularity tracks
+        continue
     print(f"Name: {v['name']}")
     print(f"Album: {v['album']}")
     print(f"Type: {v['version_type']}")

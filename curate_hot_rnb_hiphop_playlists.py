@@ -33,7 +33,7 @@ ADD_ITEMS_LIMIT = 100  # per request limit for adding items to playlists
 # The token will be cached in .spotify_token_cache
 sp = spotipy.Spotify(auth_manager=SpotifyOAuth(
     scope="playlist-modify-public playlist-modify-private",
-    redirect_uri="http://127.0.0.1:8080", # Changed from localhost to explicit loopback address
+    redirect_uri="http://127.0.0.1:60000", # Updated to an available port
     client_id=os.getenv("SPOTIPY_CLIENT_ID"),
     client_secret=os.getenv("SPOTIPY_CLIENT_SECRET"),
     cache_path=".spotify_token_cache" # Cache file for the user's token
@@ -71,10 +71,17 @@ def read_year_csv(year: int, input_dir: str) -> List[Dict[str, str]]:
         print(f"Warning: Missing CSV for {year}: {path}")
         return rows
 
-    with open(path, newline='', encoding="utf-8") as f:
-        reader = csv.DictReader(f)
-        for r in reader:
-            rows.append(r)
+    print(f"Attempting to read CSV: {path}") # Debugging line
+    try:
+        with open(path, newline='', encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            print(f"CSV Headers for {year}: {reader.fieldnames}") # Debugging line
+            for r in reader:
+                rows.append(r)
+        print(f"Successfully read {len(rows)} rows from {path}") # Debugging line
+    except Exception as e:
+        print(f"Error reading CSV {path}: {e}") # Debugging line
+        return []
     return rows
 
 
@@ -296,9 +303,12 @@ def build_year_playlists(
 
     count = 0
     for r in rows:
-        title = r.get("title") or r.get("track_name") or r.get("name")
-        artist = r.get("artist") or r.get("artist_name") or r.get("artists")
+        # Corrected to use exact CSV header names
+        title = r.get("Title")
+        artist = r.get("Artist(s)")
+
         if not title or not artist:
+            print(f"Skipping row due to missing title or artist: {r}") # Debugging line
             continue
 
         if limit and count >= limit:
@@ -340,7 +350,6 @@ def build_year_playlists(
     if clean_uris:
         add_tracks_to_playlist(clean_pl_id, clean_uris)
         add_tracks_to_playlist(decade_clean_pl_id, clean_uris)
-
 
 # -----------------------------
 # Main
